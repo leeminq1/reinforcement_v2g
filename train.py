@@ -25,7 +25,7 @@ def train_dqn():
     agent = DQNAgent(state_size=state_size, action_size=action_size)
     
     # Training parameters
-    episodes = 10  # 에피소드 수 감소
+    episodes = 60  # 에피소드 수 감소
     target_update_frequency = 5
     rewards_history = []
     

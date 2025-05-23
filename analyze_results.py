@@ -30,77 +30,103 @@ def analyze_results(csv_file):
     
     # CSV 파일 로드
     df = pd.read_csv(csv_file)
-    
-    # 1. 에피소드별 보상 추이
+
+    # 20개 에피소드 단위로 그룹핑
+    df['episode_group'] = df['episode'] // 20
+
+    # 1. 에피소드 그룹별 보상 추이 (평균)
     plt.figure(figsize=(15, 8))
-    sns.lineplot(data=df, x='time', y='reward', hue='episode')
-    plt.title('에피소드별 시간당 보상')
+    grouped = df.groupby(['episode_group', 'time'], as_index=False)['reward'].mean()
+    for group in grouped['episode_group'].unique():
+        group_data = grouped[grouped['episode_group'] == group]
+        plt.plot(group_data['time'], group_data['reward'], label=f'Group {int(group)*20}~{int(group)*20+19}')
+    plt.title('20개 에피소드 그룹별 시간당 평균 보상')
     plt.xlabel('시간')
-    plt.ylabel('보상')
+    plt.ylabel('평균 보상')
+    plt.legend()
+    plt.grid(True, which='both', axis='both', linestyle='--', alpha=0.5)
+    plt.xticks(range(0, 25, 1))
     plt.savefig(os.path.join(png_dir, 'rewards_by_episode.png'))
     plt.close()
-    
-    # 2. 건물 부하와 총 부하 비교 (모든 에피소드)
+
+    # 2. 건물 부하와 총 부하 비교 (20개 에피소드 그룹별 평균)
     plt.figure(figsize=(15, 8))
-    for ep in df['episode'].unique():
-        ep_data = df[df['episode'] == ep]
-        plt.plot(ep_data['time'], ep_data['building_load'], 
-                label=f'건물 부하 (EP {ep})', alpha=0.3)
-        plt.plot(ep_data['time'], ep_data['total_load'], 
-                label=f'총 부하 (EP {ep})', alpha=0.3)
+    grouped_load = df.groupby(['episode_group', 'time'], as_index=False)[['building_load', 'total_load']].mean()
+    for group in grouped_load['episode_group'].unique():
+        group_data = grouped_load[grouped_load['episode_group'] == group]
+        plt.plot(group_data['time'], group_data['building_load'], label=f'건물 부하 (Group {int(group)*20}~{int(group)*20+19})', alpha=0.5)
+        plt.plot(group_data['time'], group_data['total_load'], label=f'총 부하 (Group {int(group)*20}~{int(group)*20+19})', alpha=0.5)
     plt.axhline(y=400, color='r', linestyle='--', label='피크 임계값')
-    plt.title('시간별 부하 변화')
+    plt.title('20개 에피소드 그룹별 시간별 평균 부하 변화')
     plt.xlabel('시간')
     plt.ylabel('부하 (kW)')
     plt.legend()
+    plt.grid(True, which='both', axis='both', linestyle='--', alpha=0.5)
+    plt.xticks(range(0, 25, 1))
     plt.savefig(os.path.join(png_dir, 'loads_comparison.png'))
     plt.close()
-    
-    # 3. SMP 가격과 충방전 패턴
+
+    # 3. SMP 가격과 충방전 패턴 (20개 에피소드 그룹별 평균)
     plt.figure(figsize=(15, 12))
-    
     # 3-1. SMP 가격
     plt.subplot(2, 1, 1)
-    for ep in df['episode'].unique():
-        ep_data = df[df['episode'] == ep]
-        plt.plot(ep_data['time'], ep_data['smp_price'], 
-                label=f'Episode {ep}', alpha=0.7)
-    plt.title('시간별 SMP 가격')
+    grouped_smp = df.groupby(['episode_group', 'time'], as_index=False)['smp_price'].mean()
+    for group in grouped_smp['episode_group'].unique():
+        group_data = grouped_smp[grouped_smp['episode_group'] == group]
+        plt.plot(group_data['time'], group_data['smp_price'], label=f'Group {int(group)*20}~{int(group)*20+19}')
+    plt.title('20개 에피소드 그룹별 시간별 평균 SMP 가격')
     plt.xlabel('시간')
     plt.ylabel('가격 (원/kWh)')
     plt.legend()
-    
-    # 3-2. EV 충방전 패턴 (마지막 에피소드)
-    plt.subplot(2, 1, 2)
-    last_ep = df['episode'].max()
-    last_ep_data = df[df['episode'] == last_ep]
-    
-    ev_columns = [col for col in df.columns if 'charging_rate' in col]
-    for col in ev_columns:
-        plt.plot(last_ep_data['time'], last_ep_data[col], 
-                label=f'EV {col.split("_")[0]}', alpha=0.7)
-    plt.title(f'EV 충방전 패턴 (Episode {last_ep})')
-    plt.xlabel('시간')
-    plt.ylabel('충방전량 (kW)')
-    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-    plt.tight_layout()
+    plt.grid(True, which='both', axis='both', linestyle='--', alpha=0.5)
+    plt.xticks(range(0, 25, 1))
+
+    # 3-2. EV 충방전 패턴 (EV별 subplot, 그룹별 평균)
+    ev_columns = [col for col in df.columns if 'charging_rate' in col and 'ev' in col]
+    fig, axes = plt.subplots(20, 1, figsize=(20, 2.5*20), sharex=True, sharey=True)
+    for idx, col in enumerate(ev_columns):
+        ax = axes[idx]
+        grouped_ev = df.groupby(['episode_group', 'time'], as_index=False)[col].mean()
+        for group in grouped_ev['episode_group'].unique():
+            group_data = grouped_ev[grouped_ev['episode_group'] == group]
+            ax.plot(group_data['time'], group_data[col], label=f'Group {int(group)*20}~{int(group)*20+19}')
+        ax.set_title(f'{col}')
+        ax.grid(True, which='both', axis='both', linestyle='--', alpha=0.5)
+        ax.set_xticks(range(0, 25, 1))
+        if idx == 19:
+            ax.set_xlabel('시간')
+        if idx == 0:
+            ax.set_ylabel('충방전량 (kW)')
+    handles, labels = ax.get_legend_handles_labels()
+    fig.legend(handles, labels, bbox_to_anchor=(1.05, 1), loc='upper left')
+    plt.suptitle('EV별 20개 에피소드 그룹별 충방전 패턴(평균)')
+    plt.tight_layout(rect=[0, 0, 0.85, 0.97])
     plt.savefig(os.path.join(png_dir, 'smp_and_charging.png'), bbox_inches='tight')
     plt.close()
-    
-    # 4. SOC 변화 (마지막 에피소드)
-    plt.figure(figsize=(15, 8))
-    soc_columns = [col for col in df.columns if 'soc' in col]
-    for col in soc_columns:
-        plt.plot(last_ep_data['time'], last_ep_data[col], 
-                label=f'EV {col.split("_")[0]}', alpha=0.7)
-    plt.title(f'EV SOC 변화 (Episode {last_ep})')
-    plt.xlabel('시간')
-    plt.ylabel('SOC (%)')
-    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-    plt.tight_layout()
+
+    # 4. SOC 변화 (EV별 subplot, 그룹별 평균)
+    soc_columns = [col for col in df.columns if 'soc' in col and 'ev' in col]
+    fig, axes = plt.subplots(20, 1, figsize=(20, 2.5*20), sharex=True, sharey=True)
+    for idx, col in enumerate(soc_columns):
+        ax = axes[idx]
+        grouped_soc = df.groupby(['episode_group', 'time'], as_index=False)[col].mean()
+        for group in grouped_soc['episode_group'].unique():
+            group_data = grouped_soc[grouped_soc['episode_group'] == group]
+            ax.plot(group_data['time'], group_data[col], label=f'Group {int(group)*20}~{int(group)*20+19}')
+        ax.set_title(f'{col}')
+        ax.grid(True, which='both', axis='both', linestyle='--', alpha=0.5)
+        ax.set_xticks(range(0, 25, 1))
+        if idx == 19:
+            ax.set_xlabel('시간')
+        if idx == 0:
+            ax.set_ylabel('SOC (%)')
+    handles, labels = ax.get_legend_handles_labels()
+    fig.legend(handles, labels, bbox_to_anchor=(1.05, 1), loc='upper left')
+    plt.suptitle('EV별 20개 에피소드 그룹별 SOC 변화(평균)')
+    plt.tight_layout(rect=[0, 0, 0.85, 0.97])
     plt.savefig(os.path.join(png_dir, 'soc_changes.png'), bbox_inches='tight')
     plt.close()
-    
+
     # 5. 통계 정보 출력
     print("\n=== 학습 결과 분석 ===")
     print(f"총 에피소드 수: {df['episode'].nunique()}")
