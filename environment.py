@@ -88,12 +88,16 @@ class V2GEnvironment(gym.Env):
             max_target = min(initial_soc + 40, 100)  # 최대 40% 증가
             target_soc = np.random.uniform(min_target, max_target)
             
-            self.vehicles[i]['present'] = True
+            arrival_time = np.random.randint(0, 12)
+            departure_time = np.random.randint(12, 24)
+
+            # 차량은 도착 시간까지 주차장에 존재하지 않음
+            self.vehicles[i]['present'] = arrival_time == 0
             self.vehicles[i]['soc'] = initial_soc
             self.vehicles[i]['initial_soc'] = initial_soc
             self.vehicles[i]['target_soc'] = target_soc
-            self.vehicles[i]['arrival_time'] = np.random.randint(0, 12)
-            self.vehicles[i]['departure_time'] = np.random.randint(12, 24)
+            self.vehicles[i]['arrival_time'] = arrival_time
+            self.vehicles[i]['departure_time'] = departure_time
             self.vehicles[i]['charging_rate'] = 0.0
         
         return self._get_observation()
@@ -122,7 +126,10 @@ class V2GEnvironment(gym.Env):
         total_reward = 0
         total_ev_power = 0
         individual_powers = []  # 각 EV의 전력량 저장
-        
+
+        # 현재 시간의 건물 부하는 스텝 동안 고정
+        building_load = self.current_load
+
         # 1단계: 각 차량의 충/방전량 계산
         for i, action in enumerate(actions):
             if not self.vehicles[i]['present']:
@@ -146,8 +153,8 @@ class V2GEnvironment(gym.Env):
             soc_gap = self.vehicles[i]['target_soc'] - self.vehicles[i]['soc']
             is_urgent = time_to_departure <= 3 and soc_gap > 0
             
-            # 2. 피크 상황 체크
-            is_peak = self.grid.get_current_building_load() > self.peak_threshold
+            # 2. 피크 상황 체크 - 건물 부하는 스텝 동안 변경되지 않음
+            is_peak = building_load > self.peak_threshold
             
             # 3. 가격 상황 체크
             is_price_high = self.current_price > self.grid.get_average_price()
@@ -186,7 +193,6 @@ class V2GEnvironment(gym.Env):
             self.vehicles[i]['charging_rate'] = safe_action * self.max_charging_rate
         
         # 2단계: 피크 저감 상황 확인
-        building_load = self.grid.get_current_building_load()
         is_peak_time = building_load > self.peak_threshold
         
         # 3단계: 각 EV별 피크 저감 보상 계산
